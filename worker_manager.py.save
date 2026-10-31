@@ -1,0 +1,98 @@
+
+import threading
+import time
+
+from worker import process_job
+from scheduler import WorkerScheduler
+
+
+class WorkerManager:
+    def __init__(self, store, number_of_workers=2):
+        self.store = store
+        self.scheduler = WorkerScheduler()
+        self.running = False
+        self.threads = []
+for i in range(1, number_of_workers + 1):
+        worker_id = f"worker{i}"
+        self.scheduler.register_worker(worker_id)
+        self.worker_queues[worker_id] = Queue()
+
+def start(self):
+    self.running = True
+
+    for worker_id in self.scheduler.workers:
+        thread = threading.Thread(
+            target=self.worker_loop,
+            args=(worker_id,),
+            daemon=True
+        )
+        thread.start()
+        self.threads.append(thread)
+
+    dispatcher = threading.Thread(
+        target=self.dispatch_loop,
+        daemon=True
+    )
+    dispatcher.start()
+    self.threads.append(dispatcher)
+
+    print("Worker manager started")
+
+def dispatch_loop(self):
+    while self.running:
+        job = self.store.next_queued(timeout=1)
+
+        if job is None:
+            continue
+
+        worker_id = self.scheduler.get_available_worker()
+
+        if worker_id is None:
+            self.store.requeue(job.job_id)
+            time.sleep(0.1)
+            continue
+
+        self.scheduler.mark_busy(worker_id)
+        print(f"[DISPATCH] Assigned job {job.job_id} to {worker_id}")
+        self.worker_queues[worker_id].put(job)
+
+def worker_loop(self, worker_id):
+    while self.running:
+        try:
+            job = self.worker_queues[worker_id].get(timeout=1)
+        except Exception:
+            continue
+
+        try:
+            self.store.mark_running(job.job_id, worker_id)
+
+            payload = dict(job.payload)
+            payload["job_id"] = job.job_id
+
+            result = process_job(payload)
+
+            if result["status"] == "COMPLETED":
+                self.store.mark_completed(
+                    job.job_id,
+                    result["result"]
+                )
+            else:
+                self.store.mark_failed(
+                    job.job_id,
+                    result["error"]
+                )
+
+        except Exception as error:
+            self.store.mark_failed(job.job_id, str(error))
+
+        finally:
+            self.scheduler.mark_idle(worker_id)
+            self.worker_queues[worker_id].task_done()
+
+def stop(self):
+    self.running = False        
+        
+
+
+ == "__main__":
+    print("Import WorkerManager into job_manager.py to start workers.")
