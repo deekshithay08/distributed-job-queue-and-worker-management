@@ -75,7 +75,7 @@ Main files:
 
 ### Person 2 – Worker Management and Job Execution
 
-Responsible for worker registration, job execution and worker availability management.
+Responsible for worker registration, job execution, worker availability and scheduling.
 
 Main files:
 
@@ -84,6 +84,36 @@ Main files:
 | `worker.py` | Contains job execution and processing logic |
 | `worker_manager.py` | Manages local worker threads and their execution queues |
 | `scheduler.py` | Handles worker registration, availability and worker selection |
+| `test_worker.py` | Tests worker execution, job processing and scheduler functionality |
+
+**Testing:**
+
+Run the worker tests using:
+
+```bash
+python3 -m unittest -v test_worker
+```
+
+The test suite successfully passed 8 tests covering:
+Test cases covered (8):
+
+test_invalid – Checks handling of an invalid job operation.
+
+test_invalid_sum_range – Checks handling of an invalid SUM range.
+
+test_multiply – Tests the MULTIPLY operation.
+
+test_job_failure – Tests failed job processing.
+
+test_job_success – Tests successful job processing.
+
+test_busy – Tests worker busy status.
+
+test_round_robin – Tests round-robin worker selection.
+
+test_sum – Tests the SUM operation.
+
+Result: 8 test cases passed.
 
 For the distributed Mininet implementation, remote worker execution is handled through `worker_node.py` and `remote_worker_manager.py`.
 
