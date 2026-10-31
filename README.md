@@ -1,54 +1,340 @@
-# Person 1 - Client & Job Queue (D1 + D2)
+# Distributed Job Queue and Worker Management using SDN
 
-## Files
-| File | What it is |
-|---|---|
-| `job_manager.py` | TCP server (many clients), job IDs, queue, 4 job states, ACK/result messages, retry limit, queue cap ("server busy"), stats, metrics CSV |
-| `client.py` | Client: submits jobs on one connection, prints ACKs and results, handles "rejected", `get_stats()` helper |
-| `test_p1.py` | D1 tests (concurrent clients, FAILED state, bad input, requeue) |
-| `test_d2.py` | D2 tests (retry limit, overload/backpressure, recovery, stats) |
-| `perf_p1.py` | D2 experiments + graphs (scalability, static vs dynamic worker failure) |
+## 1. Project Overview
 
-## Run (needs only Python 3; `pip3 install matplotlib` for graphs)
-```
-python3 test_p1.py        # 4 x PASS  (D1)
-python3 test_d2.py        # 4 x PASS  (D2)
-python3 perf_p1.py        # prints tables, writes results_*.csv and graph_*.png
-```
-Live demo: terminal 1 `python3 job_manager.py`, terminal 2/3 `python3 client.py 127.0.0.1 3 1.0 clientA`.
-Ctrl+C on the job manager saves `metrics_job_manager.csv`.
+This project implements a Distributed Job Queue and Worker Management System integrated with Software-Defined Networking (SDN).
 
-## D2 rubric -> what to show
-| D2 item | Marks | Person 1 evidence |
+The system allows clients to submit jobs to a central Job Manager, which maintains a job queue and distributes jobs among available workers for execution.
+
+The project uses Mininet to create a virtual network topology and OS-KEN as the SDN controller. OpenFlow switches provide network connectivity between clients, the Job Manager, and remote workers.
+
+The system is divided into three major components:
+
+1. Client and Job Queue Management
+2. Worker Management and Job Execution
+3. SDN Network Management and Integration
+
+## 2. Technologies Used
+
+- **Programming Language:** Python 3
+- **Networking Emulator:** Mininet
+- **SDN Controller:** OS-KEN
+- **Communication Protocol:** TCP
+- **SDN Protocol:** OpenFlow
+- **Operating System:** Ubuntu Linux
+- **Network Topology:** Mininet with 4 OpenFlow switches and 5 hosts
+
+## 3. Project Architecture
+
+The system consists of the following components:
+
+- **Client (c1, c2):** Submits jobs to the Job Manager.
+- **Job Manager (jm):** Receives job requests, maintains the queue, assigns jobs to workers, and collects execution results.
+- **Workers (w1, w2):** Register with the Job Manager, execute assigned jobs, and return results.
+- **OS-KEN Controller:** Communicates with OpenFlow switches and manages network forwarding.
+- **Mininet:** Creates the virtual network used to connect all components.
+
+### Network Topology
+
+The Mininet topology contains:
+
+| Component | Host / Switch | IP Address |
 |---|---|---|
-| Complete application functionality | 4 | concurrent clients, job IDs, 4 states, ACK + pushed results, retry limit (max 3 attempts), stats message |
-| Challenging scenario / robustness | 4 | `test_d2.py` T2/T3: 25 jobs into a queue of 10 -> 15 rejected "server busy", server stays alive, recovers after draining. Also bad-input handling (test_p1 PASS 3) |
-| Performance evaluation & comparison | 5 | `perf_p1.py`: latency / p95 / throughput for 1, 5, 10, 20 clients; static (no monitoring) vs dynamic (requeue) under a worker failure; graphs + CSVs |
-| Dynamic SDN functionality | 6 | mostly Person 3; you provide `stats` (queue/running numbers) and `running_jobs_of()` + `requeue()` hooks |
-| Documentation / viva | 6 | this file + your report section + screenshots of the PASS output and the graphs |
+| Job Manager | jm | 10.0.0.10 |
+| Client 1 | c1 | 10.0.0.1 |
+| Client 2 | c2 | 10.0.0.2 |
+| Worker 1 | w1 | 10.0.0.21 |
+| Worker 2 | w2 | 10.0.0.22 |
+| Switches | s1, s2, s3, s4 | OpenFlow switches |
 
-## Message protocol (newline-delimited JSON, TCP port 5001)
-| Direction | Message |
+The controller listens on OpenFlow port **6653**.
+
+### Job Execution Flow
+
+1. A client submits a job to the Job Manager.
+2. The Job Manager accepts the request and places the job in the queue.
+3. Available workers register with the Job Manager.
+4. The Job Manager dispatches queued jobs to workers.
+5. Workers execute the assigned jobs.
+6. Workers send execution results back to the Job Manager.
+7. The client receives job completion information.
+
+## 4. Work Distribution
+
+### Person 1 – Client and Job Queue Management
+
+Responsible for client communication and job queue functionality.
+
+Main files:
+
+| File | Description |
 |---|---|
-| client -> server | `{"type":"submit_job","payload":{...}}` |
-| server -> client | `{"type":"ack","job_id":"..","state":"QUEUED"}` |
-| server -> client | `{"type":"rejected","reason":"server busy","queue_len":N}` |
-| server -> client (pushed later) | `{"type":"result","job_id":"..","state":"COMPLETED"/"FAILED",...}` |
-| client -> server | `{"type":"job_status","job_id":".."}` -> `{"type":"status",...}` |
-| client -> server | `{"type":"stats"}` -> queued/running/completed/failed/rejected/avg_latency_s |
+| `job_manager.py` | Handles client connections, job requests, queue management, job states, dispatching and results |
+| `client.py` | Submits jobs and receives acknowledgements and results |
+| `test_p1.py` | Tests for job queue and client functionality |
 
-## Hooks for Person 2 / Person 3
-```
-store.next_queued(timeout)      get next waiting job (blocks)
-store.mark_running(id, worker)
-store.mark_completed(id, result)
-store.mark_failed(id, reason)
-store.running_jobs_of(worker)   all jobs on a worker  (call when it dies)
-store.requeue(id)               back to QUEUED; becomes FAILED after max_attempts
-store.full_stats()              numbers Person 3's controller can use for load decisions
+### Person 2 – Worker Management and Job Execution
+
+Responsible for worker registration, job execution and worker availability management.
+
+Main files:
+
+| File | Description |
+|---|---|
+| `worker.py` | Contains job execution and processing logic |
+| `worker_manager.py` | Manages local worker threads and their execution queues |
+| `scheduler.py` | Handles worker registration, availability and worker selection |
+
+For the distributed Mininet implementation, remote worker execution is handled through `worker_node.py` and `remote_worker_manager.py`.
+
+### Person 3 – SDN and Network Management
+
+Responsible for creating the virtual network, SDN controller integration and network management.
+
+Main files:
+
+| File | Description |
+|---|---|
+| `controller.py` | OS-KEN SDN controller application |
+| `run_controller.py` | Starts the OS-KEN controller |
+| `topology.py` | Creates the Mininet network topology |
+| `netconfig.py` | Stores network configuration and host information |
+| `routing.py` | Contains network routing logic |
+| `sdn_bridge.py` | Connects the SDN and job queue components |
+| `remote_worker_manager.py` | Supports remote worker management |
+| `monitor.py` | Network monitoring functionality |
+
+## 5. Project Directory Structure
+
+```text
+sf_job_queue/
+│
+├── README.md
+├── requirements.txt
+│
+├── job_manager.py
+├── client.py
+│
+├── worker.py
+├── worker_manager.py
+├── scheduler.py
+│
+├── worker_node.py
+├── remote_worker_manager.py
+│
+├── controller.py
+├── run_controller.py
+├── topology.py
+├── netconfig.py
+├── routing.py
+├── sdn_bridge.py
+├── monitor.py
+│
+├── test_p1.py
+├── test_worker.py
+├── tests/
+│
+├── cleanup.sh
+└── logs/
 ```
 
-## Honest note for the report
-`perf_p1.py` uses simulated workers so you can run it alone. When Person 2's real workers and
-Person 3's Mininet network work, rerun the same experiment against the real system and replace
-the numbers/graphs. Say in the report which results are simulated and which are real.
+## 6. Installation and Setup
+
+### Requirements
+
+- Ubuntu Linux
+- Python 3
+- Mininet
+- OS-KEN
+- VirtualBox (if running Ubuntu inside a virtual machine)
+
+### Create and activate a virtual environment
+
+```bash
+python3 -m venv ~/cn_project/venv
+source ~/cn_project/venv/bin/activate
+```
+
+### Install OS-KEN
+
+```bash
+pip install os-ken
+```
+
+If additional Python dependencies are required:
+
+```bash
+pip install -r requirements.txt
+```
+
+## 7. Running the Distributed System
+
+All commands below assume the project is located at:
+
+```bash
+cd /media/sf_job_queue
+```
+
+### Step 1: Start the SDN Controller
+
+Open Terminal 1:
+
+```bash
+cd /media/sf_job_queue
+source ~/cn_project/venv/bin/activate
+python run_controller.py
+```
+
+The controller listens on port 6653 for OpenFlow switches.
+
+Keep this terminal running.
+
+### Step 2: Start the Mininet Topology
+
+Open Terminal 2:
+
+```bash
+cd /media/sf_job_queue
+sudo mn -c
+sudo python3 topology.py
+```
+
+Wait for the Mininet CLI:
+
+```text
+mininet-p3>
+```
+
+### Step 3: Verify Network Connectivity
+
+Inside the Mininet CLI:
+
+```text
+pingall
+```
+
+Expected result:
+
+```text
+*** Results: 0% dropped
+```
+
+### Step 4: Start the Job Manager and Remote Workers
+
+Inside the Mininet CLI:
+
+```text
+startapp
+```
+
+This starts:
+
+- Job Manager on `jm`
+- Worker 1 on `w1`
+- Worker 2 on `w2`
+
+Expected output:
+
+```text
+started run_job_manager.py on jm
+started worker_node.py on w1
+started worker_node.py on w2
+```
+
+### Step 5: Submit Jobs
+
+Inside the Mininet CLI:
+
+```text
+submit c1 5 2.0
+```
+
+This submits five jobs from client `c1`, with an execution duration of approximately two seconds per job.
+
+Expected output:
+
+```text
+ACK job=... state=QUEUED
+DONE job=... state=COMPLETED
+```
+
+The client receives acknowledgements and completion messages for the submitted jobs.
+
+## 8. Monitoring and Logs
+
+The application generates log files inside the `logs/` directory.
+
+### Job Manager logs
+
+```bash
+cat logs/jm.log
+```
+
+Displays worker registration, job queue activity, dispatching, execution results and statistics.
+
+### Worker 1 logs
+
+```bash
+cat logs/worker1.log
+```
+
+Displays job execution activity on Worker 1.
+
+### Worker 2 logs
+
+```bash
+cat logs/worker2.log
+```
+
+Displays job execution activity on Worker 2.
+
+## 9. Demonstrated Results
+
+The integrated D1 demonstration was successfully executed using Mininet.
+
+### Network Connectivity
+
+- Five hosts were connected through four OpenFlow switches.
+- The switches connected to the OS-KEN controller.
+- `pingall` completed with 0% packet loss.
+
+### Worker Registration
+
+Both remote workers successfully registered with the Job Manager:
+
+```text
+worker1 REGISTERED from 10.0.0.21
+worker2 REGISTERED from 10.0.0.22
+```
+
+### Job Execution
+
+Five jobs were submitted from client `c1`.
+
+The jobs were distributed across the two workers:
+
+| Worker | Jobs Completed |
+|---|---:|
+| Worker 1 | 3 |
+| Worker 2 | 2 |
+| **Total** | **5** |
+
+### Final Job Manager Statistics
+
+```text
+queued: 0
+running: 0
+completed: 5
+failed: 0
+rejected: 0
+```
+
+All five submitted jobs were completed successfully.
+
+## 10. Conclusion
+
+The project demonstrates a distributed job queue and worker management system integrated with an SDN-based virtual network.
+
+The Job Manager handles job submission and distribution, workers execute assigned tasks, and the OS-KEN controller manages communication with OpenFlow switches.
+
+The successful Mininet demonstration verifies the integration of the client, Job Manager, remote workers and SDN network for the tested D1 workflow.
